@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f8f6f1;
+  --bg-elevated: #ffffff;
+  --bg-hover: #eeebe1;
+  --border: #e2ddd0;
+  --border-soft: #ece8dc;
+  --fg: #17160f;
+  --fg-muted: #6b6656;
+  --fg-faint: #a49d89;
+  --accent: #4c6b1f;
+  --accent-soft: rgba(76, 107, 31, 0.1);
+  --amber: #a3660a;
+  --amber-soft: rgba(163, 102, 10, 0.1);
+  --on-accent: #f8f6f1;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-hover: var(--bg-hover);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-accent: var(--accent);
+  --color-amber: var(--amber);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-fraunces);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.hairline {
+  border-top: 1px solid var(--border);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}

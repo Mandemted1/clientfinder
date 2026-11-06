@@ -3,14 +3,40 @@ import type {
   Business, DiscoveryRow, Stats, WebsiteStatus, PipelineRun, Message, PendingAction, ConsoleMessage, ChatSession,
 } from "./types";
 
-export async function getStats(): Promise<Stats> {
-  const [totalRes, enrichedRes, statusRes, dismissedRes] = await Promise.all([
-    pool.query(`SELECT count(*)::int AS n FROM business_entity`),
-    pool.query(`SELECT count(*)::int AS n FROM business_entity WHERE followers IS NOT NULL`),
+export async function getStats(filter: { country?: string; source?: SourceFilter } = {}): Promise<Stats> {
+  // Same country/source filters as the lead list, so the numbers match what's shown.
+  const conds: string[] = ["true"];
+  const params: unknown[] = [];
+  if (filter.country) {
+    params.push(filter.country);
+    conds.push(`country = $${params.length}`);
+  }
+  if (filter.source && filter.source !== "all") {
+    params.push(filter.source);
+    conds.push(`COALESCE(source, 'instagram') = $${params.length}`);
+  }
+  const where = conds.join(" AND ");
+
+  const [totalRes, enrichedRes, statusRes, dismissedRes, prospectsRes] = await Promise.all([
+    pool.query(`SELECT count(*)::int AS n FROM business_entity WHERE ${where}`, params),
+    // Maps places arrive with full details, so they count as enriched on arrival.
     pool.query(
-      `SELECT website_status, count(*)::int AS n FROM business_entity GROUP BY website_status`
+      `SELECT count(*)::int AS n FROM business_entity
+       WHERE ${where} AND (followers IS NOT NULL OR source = 'google_maps')`,
+      params
     ),
-    pool.query(`SELECT count(*)::int AS n FROM business_entity WHERE status = 'rejected'`),
+    pool.query(
+      `SELECT website_status, count(*)::int AS n FROM business_entity WHERE ${where} GROUP BY website_status`,
+      params
+    ),
+    pool.query(`SELECT count(*)::int AS n FROM business_entity WHERE ${where} AND status = 'rejected'`, params),
+    // Same rule as the Prospects view: Maps leads only once they pass the "solid" bar.
+    pool.query(
+      `SELECT count(*)::int AS n FROM business_entity
+       WHERE ${where} AND score IS NOT NULL AND website_status != 'WEBSITE_EXISTS'
+         AND status != 'rejected' AND (COALESCE(source, 'instagram') = 'instagram' OR is_solid)`,
+      params
+    ),
   ]);
 
   const byWebsiteStatus: Record<string, number> = {};
@@ -23,7 +49,7 @@ export async function getStats(): Promise<Stats> {
     .reduce((sum, [, n]) => sum + n, 0);
   const disqualified = byWebsiteStatus["WEBSITE_EXISTS"] || 0;
   const dismissed = dismissedRes.rows[0].n;
-  const prospects = verified - disqualified - dismissed;
+  const prospects = prospectsRes.rows[0].n;
   const pending = byWebsiteStatus["UNCHECKED"] || 0;
 
   return {
@@ -39,7 +65,8 @@ export async function getStats(): Promise<Stats> {
 }
 
 export type LeadView = "prospects" | "disqualified" | "dismissed" | "all";
-export type SortKey = "score" | "followers" | "recent";
+export type SortKey = "score" | "followers" | "reviews" | "recent";
+export type SourceFilter = "all" | "google_maps" | "instagram";
 
 export async function getLeads(opts: {
   view?: LeadView;
@@ -47,14 +74,19 @@ export async function getLeads(opts: {
   sort?: SortKey;
   q?: string;
   leadStatus?: string;
+  source?: SourceFilter;
+  country?: string;
 }): Promise<Business[]> {
-  const { view = "prospects", websiteStatus = "all", sort = "score", q, leadStatus } = opts;
+  const { view = "prospects", websiteStatus = "all", sort = "score", q, leadStatus, source = "all", country } = opts;
 
   const conditions: string[] = ["score IS NOT NULL"];
   const params: unknown[] = [];
 
   if (view === "prospects") {
     conditions.push(`website_status != 'WEBSITE_EXISTS'`, `status != 'rejected'`);
+    // Maps leads only count as prospects once they pass the "solid" bar
+    // (enough reviews, decent rating, reachable by phone).
+    conditions.push(`(COALESCE(source, 'instagram') = 'instagram' OR is_solid)`);
   } else if (view === "disqualified") {
     conditions.push(`website_status = 'WEBSITE_EXISTS'`);
   } else if (view === "dismissed") {
@@ -66,6 +98,16 @@ export async function getLeads(opts: {
     conditions.push(`website_status = $${params.length}`);
   }
 
+  if (country) {
+    params.push(country);
+    conditions.push(`country = $${params.length}`);
+  }
+
+  if (source !== "all") {
+    params.push(source);
+    conditions.push(`COALESCE(source, 'instagram') = $${params.length}`);
+  }
+
   if (leadStatus && leadStatus !== "all") {
     params.push(leadStatus);
     conditions.push(`status = $${params.length}`);
@@ -74,22 +116,24 @@ export async function getLeads(opts: {
   if (q) {
     params.push(`%${q}%`);
     conditions.push(
-      `(canonical_name ILIKE $${params.length} OR ig_username ILIKE $${params.length} OR bio ILIKE $${params.length})`
+      `(canonical_name ILIKE $${params.length} OR ig_username ILIKE $${params.length} OR bio ILIKE $${params.length} OR business_category_name ILIKE $${params.length} OR city ILIKE $${params.length})`
     );
   }
 
   const orderBy =
     sort === "followers"
       ? "followers DESC NULLS LAST"
-      : sort === "recent"
+      : sort === "reviews"
+        ? "reviews_count DESC NULLS LAST"
+        : sort === "recent"
         ? "discovered_at DESC"
-        : "score DESC";
+        : "score DESC NULLS LAST";
 
   const sql = `
     SELECT * FROM business_entity
     WHERE ${conditions.join(" AND ")}
     ORDER BY ${orderBy}
-    LIMIT 300
+    LIMIT 2000
   `;
 
   const res = await pool.query(sql, params);

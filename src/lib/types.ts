@@ -3,6 +3,7 @@ export type WebsiteStatus =
   | "NO_WEBSITE"
   | "SOCIAL_ONLY"
   | "BROKEN_WEBSITE"
+  | "WEAK_WEBSITE"
   | "WEBSITE_UNCERTAIN"
   | "WEBSITE_EXISTS";
 
@@ -10,7 +11,15 @@ export type LeadStatus = "new" | "scored" | "shortlisted" | "contacted" | "rejec
 
 export interface Business {
   id: number;
-  ig_username: string;
+  ig_username: string | null;
+  source: "instagram" | "google_maps" | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  maps_url: string | null;
+  rating: number | null;
+  reviews_count: number | null;
+  is_solid: boolean | null;
   canonical_name: string | null;
   niche: string | null;
   country: string | null;

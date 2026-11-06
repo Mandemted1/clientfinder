@@ -27,6 +27,7 @@ export const websiteStatusLabel: Record<string, string> = {
   NO_WEBSITE: "No website",
   SOCIAL_ONLY: "Social only",
   BROKEN_WEBSITE: "Broken website",
+  WEAK_WEBSITE: "Weak website",
   WEBSITE_UNCERTAIN: "Uncertain",
   WEBSITE_EXISTS: "Has website",
 };

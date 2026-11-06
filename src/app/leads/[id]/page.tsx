@@ -37,14 +37,31 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             {business.canonical_name || business.ig_username}
           </h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
-            <a
-              href={`https://instagram.com/${business.ig_username}`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-sm text-accent hover:underline"
-            >
-              @{business.ig_username}
-            </a>
+            {business.ig_username && (
+              <a
+                href={`https://instagram.com/${business.ig_username}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-sm text-accent hover:underline"
+              >
+                @{business.ig_username}
+              </a>
+            )}
+            {business.maps_url && (
+              <a href={business.maps_url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
+                Google Maps
+              </a>
+            )}
+            {business.phone && (
+              <a
+                href={`https://wa.me/${business.phone.replace(/[^0-9]/g, "")}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-sm text-accent hover:underline"
+              >
+                {business.phone}
+              </a>
+            )}
             {business.ai_category && (
               <span className="text-sm text-fg-muted">{business.ai_category}</span>
             )}
@@ -53,13 +70,23 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-x-10 gap-y-4 mt-10 py-6 hairline">
-        <Meta label="Followers" value={formatFollowers(business.followers)} />
-        <Meta label="Following" value={formatFollowers(business.following)} />
-        <Meta label="Posts" value={business.posts_count ?? "n/a"} />
-        <Meta label="Business account" value={business.is_business_account ? "Yes" : "No"} />
-        <Meta label="Discovered" value={timeAgo(business.discovered_at)} />
-      </div>
+      {business.source === "google_maps" ? (
+        <div className="flex flex-wrap gap-x-10 gap-y-4 mt-10 py-6 hairline">
+          <Meta label="Google reviews" value={business.reviews_count ?? 0} />
+          <Meta label="Rating" value={business.rating ? `${business.rating}★` : "n/a"} />
+          <Meta label="Website" value={business.website_url ? business.website_status : "None"} />
+          <Meta label="Address" value={business.address ?? "n/a"} />
+          <Meta label="Discovered" value={timeAgo(business.discovered_at)} />
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-x-10 gap-y-4 mt-10 py-6 hairline">
+          <Meta label="Followers" value={formatFollowers(business.followers)} />
+          <Meta label="Following" value={formatFollowers(business.following)} />
+          <Meta label="Posts" value={business.posts_count ?? "n/a"} />
+          <Meta label="Business account" value={business.is_business_account ? "Yes" : "No"} />
+          <Meta label="Discovered" value={timeAgo(business.discovered_at)} />
+        </div>
+      )}
 
       {business.ai_reason && (
         <p className="font-serif italic text-2xl leading-snug mt-10 text-fg">
@@ -69,14 +96,21 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
       {business.ai_pitch && (
         <div className="mt-8 pl-5 border-l-2" style={{ borderColor: "var(--accent)" }}>
-          <p className="text-xs uppercase tracking-wide text-fg-faint mb-2">Suggested opening</p>
+          <p className="text-xs uppercase tracking-wide text-fg-faint mb-2">
+            {business.source === "google_maps" ? "Call script (if no WhatsApp reply in 2 days)" : "Suggested opening"}
+          </p>
           <p className="text-fg-muted leading-relaxed">{business.ai_pitch}</p>
         </div>
       )}
 
       <section className="mt-14">
         <SectionLabel>Conversation</SectionLabel>
-        <ConversationPanel businessId={business.id} messages={messages} pending={pending} />
+        <ConversationPanel
+          businessId={business.id}
+          messages={messages}
+          pending={pending}
+          whatsappPhone={business.source === "google_maps" ? business.phone : null}
+        />
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mt-14">

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { getStats, getLeads, type LeadView, type SortKey } from "@/lib/queries";
+import { getStats, getLeads, type LeadView, type SortKey, type SourceFilter } from "@/lib/queries";
 import { setLeadStatus } from "@/lib/actions";
 import type { WebsiteStatus } from "@/lib/types";
 import { ScoreMark } from "@/components/ScoreMark";
@@ -40,12 +40,32 @@ const STATUS_OPTIONS: { value: WebsiteStatus | "all"; label: string }[] = [
   { value: "NO_WEBSITE", label: "No website" },
   { value: "SOCIAL_ONLY", label: "Social only" },
   { value: "BROKEN_WEBSITE", label: "Broken" },
+  { value: "WEAK_WEBSITE", label: "Weak site" },
   { value: "WEBSITE_UNCERTAIN", label: "Uncertain" },
+];
+
+const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
+  { value: "all", label: "All sources" },
+  { value: "google_maps", label: "Google Maps" },
+  { value: "instagram", label: "Instagram" },
+];
+
+const COUNTRY_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All countries" },
+  { value: "USA", label: "USA (Mississippi)" },
+  { value: "Ghana", label: "Ghana" },
+];
+
+const LEAD_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Any stage" },
+  { value: "new", label: "To send" },
+  { value: "contacted", label: "Contacted" },
 ];
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "score", label: "Score" },
   { value: "followers", label: "Followers" },
+  { value: "reviews", label: "Reviews" },
   { value: "recent", label: "Newest" },
 ];
 
@@ -55,10 +75,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const websiteStatus = (one(params.status) as WebsiteStatus | "all") ?? "all";
   const sort = (one(params.sort) as SortKey) ?? "score";
   const q = one(params.q);
+  const source = (one(params.source) as SourceFilter) ?? "all";
+  const country = one(params.country) || undefined;
+  const leadStatus = one(params.lead) || undefined;
 
   const [stats, leads] = await Promise.all([
-    getStats(),
-    getLeads({ view, websiteStatus, sort, q }),
+    getStats({ country, source }),
+    getLeads({ view, websiteStatus, sort, q, source, country, leadStatus }),
   ]);
 
   return (
@@ -130,8 +153,55 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2 mb-4 -mt-2">
+        {COUNTRY_OPTIONS.map((opt) => (
+          <Link
+            key={opt.label}
+            href={hrefWith(params, { country: opt.value || undefined })}
+            className="px-2.5 py-1 text-xs rounded-full border transition-colors"
+            style={
+              (country ?? "") === opt.value
+                ? { borderColor: "var(--fg-muted)", color: "var(--fg)" }
+                : { borderColor: "var(--border-soft)", color: "var(--fg-faint)" }
+            }
+          >
+            {opt.label}
+          </Link>
+        ))}
+        <span className="w-px bg-border-soft mx-1" />
+        {LEAD_STATUS_OPTIONS.map((opt) => (
+          <Link
+            key={opt.label}
+            href={hrefWith(params, { lead: opt.value || undefined })}
+            className="px-2.5 py-1 text-xs rounded-full border transition-colors"
+            style={
+              (leadStatus ?? "") === opt.value
+                ? { borderColor: "var(--fg-muted)", color: "var(--fg)" }
+                : { borderColor: "var(--border-soft)", color: "var(--fg-faint)" }
+            }
+          >
+            {opt.label}
+          </Link>
+        ))}
+        <span className="w-px bg-border-soft mx-1" />
+        {SOURCE_OPTIONS.map((opt) => (
+          <Link
+            key={opt.value}
+            href={hrefWith(params, { source: opt.value === "all" ? undefined : opt.value })}
+            className="px-2.5 py-1 text-xs rounded-full border transition-colors"
+            style={
+              source === opt.value
+                ? { borderColor: "var(--fg-muted)", color: "var(--fg)" }
+                : { borderColor: "var(--border-soft)", color: "var(--fg-faint)" }
+            }
+          >
+            {opt.label}
+          </Link>
+        ))}
+      </div>
+
       {view !== "disqualified" && view !== "dismissed" && (
-        <div className="flex flex-wrap gap-2 mb-8 -mt-2">
+        <div className="flex flex-wrap gap-2 mb-8">
           {STATUS_OPTIONS.map((opt) => (
             <Link
               key={opt.value}
@@ -204,18 +274,35 @@ function LeadList({
 
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <span className="font-mono text-sm text-accent">@{lead.ig_username}</span>
+                {lead.ig_username ? (
+                  <span className="font-mono text-sm text-accent">@{lead.ig_username}</span>
+                ) : (
+                  <span className="text-sm text-accent truncate">{lead.canonical_name}</span>
+                )}
                 <LeadStatusDot status={lead.status} />
-                <span className="truncate text-sm text-fg-muted">{lead.canonical_name}</span>
+                <span className="truncate text-sm text-fg-muted">
+                  {lead.ig_username
+                    ? lead.canonical_name
+                    : [lead.business_category_name, lead.city].filter(Boolean).join(" · ")}
+                </span>
               </div>
               <p className="text-sm text-fg-faint truncate mt-0.5 max-w-xl">
-                {lead.ai_pitch || lead.bio || "No bio captured."}
+                {lead.ai_pitch || lead.ai_reason || lead.bio || "No bio captured."}
               </p>
             </div>
 
             <div className="hidden sm:block text-right shrink-0">
-              <div className="font-mono text-sm tabular">{formatFollowers(lead.followers)}</div>
-              <div className="text-[11px] text-fg-faint">followers</div>
+              {lead.source === "google_maps" ? (
+                <>
+                  <div className="font-mono text-sm tabular">{lead.reviews_count ?? 0}</div>
+                  <div className="text-[11px] text-fg-faint">reviews{lead.rating ? ` · ${lead.rating}★` : ""}</div>
+                </>
+              ) : (
+                <>
+                  <div className="font-mono text-sm tabular">{formatFollowers(lead.followers)}</div>
+                  <div className="text-[11px] text-fg-faint">followers</div>
+                </>
+              )}
             </div>
 
             <div className="shrink-0">
